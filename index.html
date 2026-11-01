@@ -1,0 +1,597 @@
+
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<title>高師大和平校區探索遊戲</title>
+
+<style>
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    font-family: Arial, "Microsoft JhengHei", sans-serif;
+    background: #e9efe7;
+    color: #263b30;
+}
+
+header {
+    background: #234d3b;
+    color: white;
+    padding: 22px;
+    text-align: center;
+}
+
+header h1 {
+    margin: 0;
+}
+
+header p {
+    margin-bottom: 0;
+}
+
+main {
+    max-width: 1100px;
+    margin: 20px auto;
+    padding: 12px;
+}
+
+.game {
+    background: white;
+    padding: 15px;
+    border-radius: 15px;
+    box-shadow: 0 4px 15px #0001;
+}
+
+.info {
+    display: flex;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-bottom: 12px;
+}
+
+button {
+    border: none;
+    background: #285c43;
+    color: white;
+    padding: 10px 16px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 15px;
+}
+
+button:hover {
+    background: #397653;
+}
+
+canvas {
+    display: block;
+    width: 100%;
+    background: #dcebd5;
+    border-radius: 10px;
+}
+
+.bottom {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 15px;
+    margin-top: 15px;
+}
+
+.panel {
+    background: white;
+    padding: 15px;
+    border-radius: 12px;
+}
+
+.panel h2 {
+    margin-top: 0;
+}
+
+#tasks li {
+    margin-bottom: 10px;
+}
+
+.completed {
+    color: #27814c;
+    text-decoration: line-through;
+}
+
+.controls {
+    text-align: center;
+    margin-top: 12px;
+}
+
+.controls button {
+    margin: 3px;
+    min-width: 50px;
+}
+
+@media(max-width:650px) {
+    .bottom {
+        grid-template-columns: 1fr;
+    }
+}
+</style>
+</head>
+
+<body>
+
+<header>
+    <h1>高師大和平校區探索</h1>
+    <p>NKNU Heping Campus Adventure</p>
+</header>
+
+<main>
+
+<div class="game">
+
+    <div class="info">
+        <span>使用 WASD 或方向鍵移動</span>
+        <span id="progress">探索進度：0 / 5</span>
+        <button onclick="resetGame()">重新開始</button>
+    </div>
+
+    <canvas id="map" width="900" height="600"></canvas>
+
+    <div class="controls">
+        <button onclick="move(0,-1)">▲</button>
+        <br>
+        <button onclick="move(-1,0)">◀</button>
+        <button onclick="move(0,1)">▼</button>
+        <button onclick="move(1,0)">▶</button>
+        <br>
+        <button onclick="interact()">E 互動</button>
+    </div>
+
+</div>
+
+<div class="bottom">
+
+    <div class="panel">
+        <h2>探索任務</h2>
+        <ol id="tasks"></ol>
+    </div>
+
+    <div class="panel">
+        <h2 id="placeTitle">校園入口</h2>
+        <p id="placeInfo">
+            歡迎來到高師大和平校區！
+            使用鍵盤移動角色，探索校園建築。
+        </p>
+        <p id="message">尋找附近的建築，按 E 進行互動。</p>
+    </div>
+
+</div>
+
+</main>
+
+<script>
+
+// ========================
+// 遊戲設定
+// ========================
+
+const canvas = document.getElementById("map");
+const ctx = canvas.getContext("2d");
+
+const W = canvas.width;
+const H = canvas.height;
+
+const player = {
+    x: 100,
+    y: 300,
+    size: 18,
+    speed: 4
+};
+
+// 校園建築
+// 注意：以下座標是遊戲示意，並非官方測量座標。
+
+const buildings = [
+
+    {
+        name: "校園入口",
+        x: 40,
+        y: 270,
+        w: 120,
+        h: 65,
+        color: "#b89c70",
+        description: "和平校區探索旅程的起點。"
+    },
+
+    {
+        name: "圖書館",
+        x: 300,
+        y: 90,
+        w: 145,
+        h: 90,
+        color: "#7297b0",
+        description: "圖書館提供閱讀、自習與資料查找空間，是校園學習的重要場所。"
+    },
+
+    {
+        name: "行政大樓",
+        x: 600,
+        y: 90,
+        w: 145,
+        h: 90,
+        color: "#c39b77",
+        description: "行政大樓是校務行政與相關服務的重要場所。"
+    },
+
+    {
+        name: "藝術大樓",
+        x: 300,
+        y: 410,
+        w: 145,
+        h: 90,
+        color: "#b28ca7",
+        description: "藝術大樓與藝術創作、教學及相關活動有關。"
+    },
+
+    {
+        name: "活動中心",
+        x: 600,
+        y: 410,
+        w: 145,
+        h: 90,
+        color: "#8fae80",
+        description: "活動中心是校園活動與學生交流的空間。"
+    }
+
+];
+
+// 任務
+let completed = [];
+
+let currentBuilding = null;
+
+// ========================
+// 畫地圖
+// ========================
+
+function drawMap() {
+
+    ctx.clearRect(0, 0, W, H);
+
+    // 草地
+    ctx.fillStyle = "#e0edd9";
+    ctx.fillRect(0, 0, W, H);
+
+    // 道路
+    ctx.fillStyle = "#d0d5cb";
+
+    ctx.fillRect(0, 260, W, 90);
+    ctx.fillRect(255, 0, 70, H);
+    ctx.fillRect(520, 0, 70, H);
+
+    // 道路標線
+    ctx.strokeStyle = "#ffffff";
+    ctx.lineWidth = 3;
+    ctx.setLineDash([15, 12]);
+
+    ctx.beginPath();
+    ctx.moveTo(0, 305);
+    ctx.lineTo(W, 305);
+
+    ctx.moveTo(290, 0);
+    ctx.lineTo(290, H);
+
+    ctx.stroke();
+
+    ctx.setLineDash([]);
+
+    // 樹木
+    for (let i = 0; i < 24; i++) {
+
+        let x = 30 + (i * 83) % 830;
+        let y = 30 + (i * 57) % 540;
+
+        ctx.fillStyle = "#729c70";
+
+        ctx.beginPath();
+        ctx.arc(x, y, 13, 0, Math.PI * 2);
+        ctx.fill();
+
+    }
+
+    // 建築
+    buildings.forEach(building => {
+
+        ctx.fillStyle = "#b9c0b7";
+
+        ctx.fillRect(
+            building.x + 5,
+            building.y + 6,
+            building.w,
+            building.h
+        );
+
+        ctx.fillStyle = building.color;
+
+        ctx.fillRect(
+            building.x,
+            building.y,
+            building.w,
+            building.h
+        );
+
+        ctx.strokeStyle = "#425a49";
+        ctx.lineWidth = 2;
+
+        ctx.strokeRect(
+            building.x,
+            building.y,
+            building.w,
+            building.h
+        );
+
+        ctx.fillStyle = "#ffffff";
+        ctx.font = "bold 18px Arial";
+        ctx.textAlign = "center";
+
+        ctx.fillText(
+            building.name,
+            building.x + building.w / 2,
+            building.y + building.h / 2 + 6
+        );
+
+    });
+
+    // 玩家
+    ctx.fillStyle = "#263f32";
+
+    ctx.beginPath();
+
+    ctx.arc(
+        player.x,
+        player.y,
+        player.size,
+        0,
+        Math.PI * 2
+    );
+
+    ctx.fill();
+
+    // 玩家頭部
+    ctx.fillStyle = "#f1d6a5";
+
+    ctx.beginPath();
+
+    ctx.arc(
+        player.x,
+        player.y - 5,
+        6,
+        0,
+        Math.PI * 2
+    );
+
+    ctx.fill();
+
+    // 提示
+    ctx.fillStyle = "#354d3c";
+    ctx.font = "14px Arial";
+    ctx.textAlign = "left";
+
+    ctx.fillText("校園探索地圖", 15, 22);
+
+}
+
+// ========================
+// 移動角色
+// ========================
+
+function move(dx, dy) {
+
+    player.x += dx * player.speed;
+    player.y += dy * player.speed;
+
+    // 防止角色走出地圖
+    player.x = Math.max(
+        player.size,
+        Math.min(W - player.size, player.x)
+    );
+
+    player.y = Math.max(
+        player.size,
+        Math.min(H - player.size, player.y)
+    );
+
+    checkNearby();
+
+    drawMap();
+
+}
+
+// ========================
+// 判斷附近建築
+// ========================
+
+function checkNearby() {
+
+    currentBuilding = null;
+
+    for (const building of buildings) {
+
+        const centerX = building.x + building.w / 2;
+        const centerY = building.y + building.h / 2;
+
+        const distance = Math.sqrt(
+            Math.pow(player.x - centerX, 2) +
+            Math.pow(player.y - centerY, 2)
+        );
+
+        if (distance < 100) {
+
+            currentBuilding = building;
+
+            document.getElementById("placeTitle").textContent =
+                building.name;
+
+            document.getElementById("placeInfo").textContent =
+                building.description;
+
+            document.getElementById("message").textContent =
+                "按 E 或點互動，完成這個探索任務。";
+
+            return;
+
+        }
+
+    }
+
+    document.getElementById("message").textContent =
+        "移動角色，尋找校園建築。";
+
+}
+
+// ========================
+// 建築互動
+// ========================
+
+function interact() {
+
+    if (!currentBuilding) {
+
+        document.getElementById("message").textContent =
+            "請先靠近一個建築。";
+
+        return;
+
+    }
+
+    if (!completed.includes(currentBuilding.name)) {
+
+        completed.push(currentBuilding.name);
+
+        updateTasks();
+
+    }
+
+    document.getElementById("placeTitle").textContent =
+        currentBuilding.name;
+
+    document.getElementById("placeInfo").textContent =
+        currentBuilding.description;
+
+    document.getElementById("message").textContent =
+        "探索完成！你已經找到 " + currentBuilding.name + "。";
+
+}
+
+// ========================
+// 更新任務
+// ========================
+
+function updateTasks() {
+
+    const taskList = document.getElementById("tasks");
+
+    taskList.innerHTML = "";
+
+    buildings.forEach(building => {
+
+        const li = document.createElement("li");
+
+        li.textContent = "探索：" + building.name;
+
+        if (completed.includes(building.name)) {
+
+            li.className = "completed";
+
+        }
+
+        taskList.appendChild(li);
+
+    });
+
+    document.getElementById("progress").textContent =
+        "探索進度：" + completed.length + " / " + buildings.length;
+
+}
+
+// ========================
+// 鍵盤操作
+// ========================
+
+document.addEventListener("keydown", function(event) {
+
+    const key = event.key.toLowerCase();
+
+    if (
+        key === "arrowup" ||
+        key === "arrowdown" ||
+        key === "arrowleft" ||
+        key === "arrowright" ||
+        key === " "
+    ) {
+        event.preventDefault();
+    }
+
+    if (key === "w" || key === "arrowup") {
+        move(0, -1);
+    }
+
+    if (key === "s" || key === "arrowdown") {
+        move(0, 1);
+    }
+
+    if (key === "a" || key === "arrowleft") {
+        move(-1, 0);
+    }
+
+    if (key === "d" || key === "arrowright") {
+        move(1, 0);
+    }
+
+    if (key === "e") {
+        interact();
+    }
+
+});
+
+// ========================
+// 重新開始
+// ========================
+
+function resetGame() {
+
+    player.x = 100;
+    player.y = 300;
+
+    completed = [];
+
+    currentBuilding = null;
+
+    document.getElementById("placeTitle").textContent =
+        "校園入口";
+
+    document.getElementById("placeInfo").textContent =
+        "歡迎來到高師大和平校區！";
+
+    document.getElementById("message").textContent =
+        "尋找附近的建築，按 E 進行互動。";
+
+    updateTasks();
+
+    drawMap();
+
+}
+
+// ========================
+// 啟動遊戲
+// ========================
+
+updateTasks();
+drawMap();
+
+</script>
+
+</body>
+</html>
